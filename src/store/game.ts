@@ -8,8 +8,8 @@ import {
   limit,
   onSnapshot,
   query,
-  Unsubscribe,
-  where
+  where,
+  type Unsubscribe
 } from 'firebase/firestore';
 import { onAuthStateChanged, type User } from 'firebase/auth';
 import { devtools, subscribeWithSelector } from 'zustand/middleware';
@@ -175,11 +175,59 @@ const bindGame = (gameId: string, set: (partial: Partial<GameStoreState>) => voi
 };
 
 const handleError = (set: (partial: Partial<GameStoreState>) => void, error: unknown) => {
-  const message = error instanceof Error ? error.message : 'Unexpected error';
+  let message = 'An unexpected error occurred';
+  
+  if (error instanceof Error) {
+    // Only expose specific, safe error messages
+    if (error.message.includes('Missing game context') ||
+        error.message.includes('Game not found') ||
+        error.message.includes('Invalid response from server') ||
+        error.message.includes('functions/permission-denied') ||
+        error.message.includes('functions/not-found') ||
+        error.message.includes('functions/already-exists')) {
+      message = error.message;
+    } else if (process.env.NODE_ENV === 'development') {
+      // Only show full error details in development
+      message = error.message;
+    }
+  }
+  
   set({ error: message, loading: false });
 };
 
+// Rate limiting cache (simple in-memory implementation)
+const rateLimitCache = new Map<string, number[]>();
+
+const checkRateLimit = (userId: string, limit: number = 10, windowMs: number = 60000): boolean => {
+  const now = Date.now();
+  const userRequests = rateLimitCache.get(userId) || [];
+  
+  // Remove old requests outside the window
+  const validRequests = userRequests.filter(timestamp => now - timestamp < windowMs);
+  
+  if (validRequests.length >= limit) {
+    return false; // Rate limit exceeded
+  }
+  
+  // Add current request
+  validRequests.push(now);
+  rateLimitCache.set(userId, validRequests);
+  
+  return true;
+};
+
 const callCloudFunction = async <T>(name: string, payload: Record<string, unknown> | undefined = undefined): Promise<T> => {
+  // Basic input validation
+  if (typeof name !== 'string' || !name.match(/^[a-zA-Z][a-zA-Z0-9]*$/)) {
+    throw new Error('Invalid function name');
+  }
+  
+  // Get current user for rate limiting
+  const user = auth.currentUser;
+  if (user && !checkRateLimit(user.uid)) {
+    throw new Error('Too many requests. Please wait before trying again.');
+  }
+  
   const callable = httpsCallable(functions, name);
   const result = await callable(payload ?? {});
   return result.data as T;

@@ -1,10 +1,12 @@
-#!/bin/sh
+#!/usr/bin/env sh
 if [ -z "$husky_skip_init" ]; then
   debug () {
-    [ "$HUSKY_DEBUG" = "1" ] && echo "husky (debug) - $1"
+    if [ "$HUSKY_DEBUG" = "1" ]; then
+      echo "husky (debug) - $1"
+    fi
   }
 
-  readonly hook_name="$(basename "$0")"
+  readonly hook_name="$(basename -- "$0")"
   debug "starting $hook_name..."
 
   if [ "$HUSKY" = "0" ]; then
@@ -12,22 +14,23 @@ if [ -z "$husky_skip_init" ]; then
     exit 0
   fi
 
-  if [ ! -f package.json ]; then
-    debug "package.json not found, skipping hook"
-    exit 0
+  if [ -f ~/.huskyrc ]; then
+    debug "sourcing ~/.huskyrc"
+    . ~/.huskyrc
   fi
 
-  export PATH="$PATH:$(npm bin)"
-  command_exists () {
-    command -v "$1" >/dev/null 2>&1
-  }
+  readonly husky_skip_init=1
+  export husky_skip_init
+  sh -e "$0" "$@"
+  exitCode="$?"
 
-  if command_exists node; then
-    if [ -f .husky/pre-commit ]; then
-      debug "running pre-commit hook"
-    fi
-  else
-    echo "husky - Can't find node in PATH"
-    exit 1
+  if [ $exitCode != 0 ]; then
+    echo "husky - $hook_name hook exited with code $exitCode (error)"
   fi
+
+  if [ $exitCode = 127 ]; then
+    echo "husky - command not found in PATH=$PATH"
+  fi
+
+  exit $exitCode
 fi

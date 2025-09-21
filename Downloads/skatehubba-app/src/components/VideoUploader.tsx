@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { ref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
 import { doc, updateDoc, serverTimestamp } from "firebase/firestore";
-import { storage, db } from "@/lib/firebase";
+import { storage, db } from "@/lib/firebase/client";
 import { buildChallengeClipPath, UploadMetaSchema } from "@/lib/validators";
 
 interface Props {

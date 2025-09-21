@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "test:storage": "node tests/storage-rules.test.js"
   },
   "dependencies": {
     "firebase": "^11.10.0",
@@ -22,6 +23,7 @@
     "eslint-config-next": "14.2.3",
     "postcss": "^8.4.31",
     "tailwindcss": "^3.4.0",
-    "typescript": "^5.4.5"
+    "typescript": "^5.4.5",
+    "@firebase/rules-unit-testing": "^3.0.0"
   }
 }

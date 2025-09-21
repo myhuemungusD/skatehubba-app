@@ -1,35 +1,35 @@
-// src/firebase.ts
 import { initializeApp } from "firebase/app";
+import { getAnalytics, isSupported } from "firebase/analytics";
 import { getAuth } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
-import { getAnalytics, isSupported } from "firebase/analytics";
+import { env } from "./env";
 
-// Your config
 const firebaseConfig = {
-  apiKey: "AIzaSyD6kLt4GKV4adX-oQ3m_aXIpL6GXBP0xZw",
-  authDomain: "sk8hub-d7806.firebaseapp.com",
-  projectId: "sk8hub-d7806",
-  storageBucket: "sk8hub-d7806.firebasestorage.app",
-  messagingSenderId: "665573979824",
-  appId: "1:665573979824:web:731aaae46daea5efee2d75",
-  measurementId: "G-7XVNF1LHZW"
+  apiKey: env.NEXT_PUBLIC_FIREBASE_API_KEY,
+  authDomain: env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
+  projectId: env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+  storageBucket: env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+  appId: env.NEXT_PUBLIC_FIREBASE_APP_ID,
+  ...(env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID
+    ? { measurementId: env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID }
+    : {}),
 };
 
-// Initialize
 const app = initializeApp(firebaseConfig);
 
 export const auth = getAuth(app);
 export const db = getFirestore(app);
 export const storage = getStorage(app);
 
-// Analytics must be conditional
 let analytics: ReturnType<typeof getAnalytics> | undefined;
 if (typeof window !== "undefined") {
-  isSupported().then((yes) => {
-    if (yes) {
+  isSupported().then((supported) => {
+    if (supported) {
       analytics = getAnalytics(app);
     }
   });
 }
-export { analytics };
+
+export { analytics, app };

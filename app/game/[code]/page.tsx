@@ -23,11 +23,11 @@ export default function GamePage() {
   }));
 
   useEffect(() => {
-    const code = params.code?.toString().toUpperCase();
+    const code = params?.code?.toString().toUpperCase();
     if (!code) return;
     actions.bootstrap().catch((err) => console.error(err));
     actions.connectGame(code).catch((err) => console.error(err));
-  }, [actions, params.code]);
+  }, [actions, params?.code]);
 
   if (!game) {
     return (

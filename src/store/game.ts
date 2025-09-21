@@ -8,8 +8,8 @@ import {
   limit,
   onSnapshot,
   query,
-  Unsubscribe,
-  where
+  where,
+  type Unsubscribe
 } from 'firebase/firestore';
 import { onAuthStateChanged, type User } from 'firebase/auth';
 import { devtools, subscribeWithSelector } from 'zustand/middleware';

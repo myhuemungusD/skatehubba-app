@@ -1,7 +1,7 @@
 import './globals.css';
 import type { Metadata } from 'next';
 import { Analytics } from '@vercel/analytics/react';
-import { ReactNode } from 'react';
+import type { ReactNode } from 'react';
 
 export const metadata: Metadata = {
   title: 'SkateHubba S.K.8',

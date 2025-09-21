@@ -62,7 +62,7 @@ export const ensureSignedIn = (): Promise<User | null> => {
   }
 
   if (!authReadyPromise) {
-    authReadyPromise = new Promise((resolve, reject) => {
+    authReadyPromise = new Promise<User | null>((resolve, reject) => {
       const unsub = onAuthStateChanged(
         auth,
         async (user) => {
@@ -87,7 +87,7 @@ export const ensureSignedIn = (): Promise<User | null> => {
     });
   }
 
-  return authReadyPromise;
+  return authReadyPromise!;
 };
 
 export const getServerTimestamp = serverTimestamp;

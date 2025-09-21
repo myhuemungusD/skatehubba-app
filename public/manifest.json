@@ -1,0 +1,10 @@
+{
+  "name": "SkateHubba S.K.8",
+  "short_name": "SkateHubba",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#050505",
+  "theme_color": "#FF6B1A",
+  "description": "Two-player S.K.8 battles with realtime judging.",
+  "icons": []
+}

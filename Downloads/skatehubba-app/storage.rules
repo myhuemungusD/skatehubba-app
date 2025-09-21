@@ -1,12 +1,49 @@
 rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
-    match /games/{gameId}/tricks/{fileName} {
-      allow read, write: if request.auth != null;
+    function isAuthed() {
+      return request.auth != null;
     }
-    match /clips/{fileName} {
-      allow read: if true;
-      allow write: if request.auth != null;
+
+    function gameDoc(gameId) {
+      return get(/databases/$(database)/documents/games/$(gameId));
+    }
+
+    function isPlayer(game, uid) {
+      return game.data.players.A.uid == uid ||
+        (game.data.players.B != null && game.data.players.B.uid == uid);
+    }
+
+    function canUploadSet(game, uid) {
+      return game.data.turn == 'A' && game.data.players.A.uid == uid && game.data.phase == 'SET_RECORD' ||
+        game.data.turn == 'B' && game.data.players.B != null && game.data.players.B.uid == uid && game.data.phase == 'SET_RECORD';
+    }
+
+    function canUploadResponse(game, uid) {
+      return game.data.phase == 'RESP_RECORD' && (
+        (game.data.current.by == 'A' && game.data.players.B != null && game.data.players.B.uid == uid) ||
+        (game.data.current.by == 'B' && game.data.players.A.uid == uid)
+      );
+    }
+
+    function validVideoUpload() {
+      return request.resource.size < 120 * 1024 * 1024 &&
+        request.resource.contentType.matches('video/(mp4|quicktime|webm)');
+    }
+
+    match /games/{gameId}/{folder}/{filename=**} {
+      allow read: if folder == 'history' || (isAuthed() && isPlayer(gameDoc(gameId), request.auth.uid));
+
+      allow write: if isAuthed() && validVideoUpload() && let game = gameDoc(gameId) in (
+        isPlayer(game, request.auth.uid) && (
+          (folder == 'set' && canUploadSet(game, request.auth.uid)) ||
+          (folder == 'response' && canUploadResponse(game, request.auth.uid))
+        )
+      );
+    }
+
+    match /{allPaths=**} {
+      allow read, write: if false;
     }
   }
 }

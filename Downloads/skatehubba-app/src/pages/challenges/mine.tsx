@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { collection, onSnapshot, query, where } from "firebase/firestore";
-import { auth, db } from "../../firebase";
+import { auth, db } from "@/lib/firebase";
 
 export default function MyChallenges() {
   const [items, setItems] = useState<any[]>([]);

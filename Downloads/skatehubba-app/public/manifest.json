@@ -1,0 +1,16 @@
+{
+  "name": "SkateHubba",
+  "short_name": "SkateHubba",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#050505",
+  "theme_color": "#050505",
+  "description": "Run secure, real-time S.K.8 battles with Firebase-backed video uploads and judging.",
+  "icons": [
+    {
+      "src": "/assets/LOGOmain.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

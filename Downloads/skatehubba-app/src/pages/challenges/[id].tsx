@@ -1,6 +1,6 @@
 import { useRouter } from "next/router";
 import { doc, onSnapshot } from "firebase/firestore";
-import { db } from "../../firebase";
+import { db } from "@/lib/firebase";
 import { useEffect, useState } from "react";
 
 export default function ChallengeDetail() {

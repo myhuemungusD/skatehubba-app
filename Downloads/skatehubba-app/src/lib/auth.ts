@@ -1,4 +1,4 @@
-import { auth } from "../firebase";
+import { auth } from "@/lib/firebase";
 import { GoogleAuthProvider, onAuthStateChanged, signInAnonymously, signInWithPopup, User } from "firebase/auth";
 
 export function ensureAnonSignIn(): Promise<User> {

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { addDoc, collection, doc, serverTimestamp, updateDoc } from "firebase/firestore";
-import { auth, db } from "../../firebase";
+import { auth, db } from "@/lib/firebase";
 import Link from "next/link";
 
 export default function ChallengesHome() {

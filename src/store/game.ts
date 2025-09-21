@@ -218,8 +218,8 @@ export const useGameStore = create<GameStoreState>()(
         createGame: async (name: string) => {
           try {
             set({ loading: true });
-            const data = await callCloudFunction<{ gameId: string; code: string }>('createGame', { name });
             await ensureSignedIn();
+            const data = await callCloudFunction<{ gameId: string; code: string }>('createGame', { name });
             set({ loading: false });
             return data;
           } catch (error) {

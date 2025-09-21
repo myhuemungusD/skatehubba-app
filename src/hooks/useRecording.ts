@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ref, uploadBytesResumable } from 'firebase/storage';
 import { storage } from '../lib/firebase';
 import type { GamePhase, PlayerSlot } from '../store/game';
@@ -23,6 +23,27 @@ export const useRecording = ({ gameId, phase, shooter, onUploaded, onError }: Us
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState<string | undefined>();
 
+  const supportedMimeType = useMemo(() => {
+    if (typeof window === 'undefined') {
+      return undefined;
+    }
+
+    const candidates = [
+      'video/webm;codecs=vp9,opus',
+      'video/webm;codecs=vp8,opus',
+      'video/webm',
+      'video/mp4'
+    ];
+
+    for (const candidate of candidates) {
+      if (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported(candidate)) {
+        return candidate;
+      }
+    }
+
+    return undefined;
+  }, []);
+
   const resetStream = () => {
     streamRef.current?.getTracks().forEach((track) => track.stop());
     streamRef.current = null;
@@ -44,10 +65,25 @@ export const useRecording = ({ gameId, phase, shooter, onUploaded, onError }: Us
       return;
     }
 
+    if (typeof window === 'undefined' || typeof navigator === 'undefined') {
+      const err = new Error('Recording is only available in the browser');
+      setError(err.message);
+      onError?.(err);
+      return;
+    }
+
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
+      const err = new Error('Recording is not supported on this device');
+      setError(err.message);
+      onError?.(err);
+      return;
+    }
+
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
       streamRef.current = stream;
-      const recorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp9,opus' });
+      const options = supportedMimeType ? { mimeType: supportedMimeType } : undefined;
+      const recorder = new MediaRecorder(stream, options);
       mediaRecorderRef.current = recorder;
       chunksRef.current = [];
       recorder.ondataavailable = (event) => {
@@ -56,12 +92,14 @@ export const useRecording = ({ gameId, phase, shooter, onUploaded, onError }: Us
         }
       };
       recorder.onstop = async () => {
-        const blob = new Blob(chunksRef.current, { type: 'video/webm' });
-        const fileName = `${Date.now()}-${phase.toLowerCase()}-${shooter}.webm`;
+        const mimeType = recorder.mimeType || supportedMimeType || 'video/webm';
+        const extension = mimeType.includes('mp4') ? 'mp4' : 'webm';
+        const blob = new Blob(chunksRef.current, { type: mimeType });
+        const fileName = `${Date.now()}-${phase.toLowerCase()}-${shooter}.${extension}`;
         const storagePath = `games/${gameId}/${fileName}`;
         const storageRef = ref(storage, storagePath);
         setStatus('uploading');
-        const uploadTask = uploadBytesResumable(storageRef, blob, { contentType: 'video/webm' });
+        const uploadTask = uploadBytesResumable(storageRef, blob, { contentType: blob.type });
         uploadTask.on(
           'state_changed',
           (snapshot) => {
@@ -98,7 +136,7 @@ export const useRecording = ({ gameId, phase, shooter, onUploaded, onError }: Us
       setError(errorObj.message);
       onError?.(errorObj);
     }
-  }, [gameId, onError, onUploaded, phase, shooter]);
+  }, [gameId, onError, onUploaded, phase, shooter, supportedMimeType]);
 
   const stopRecording = useCallback(() => {
     const recorder = mediaRecorderRef.current;

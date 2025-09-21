@@ -1,0 +1,9 @@
+node_modules
+.next
+out
+coverage
+.vitest
+pnpm-lock.yaml
+yarn.lock
+.DS_Store
+.env.local

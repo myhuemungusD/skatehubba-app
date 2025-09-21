@@ -31,9 +31,32 @@ const firebaseConfig = {
   measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID
 };
 
+// Validate Firebase configuration
+function validateFirebaseConfig(config: typeof firebaseConfig) {
+  const requiredFields = ['apiKey', 'authDomain', 'projectId', 'storageBucket', 'messagingSenderId', 'appId'];
+  const missing = requiredFields.filter(field => !config[field as keyof typeof config]);
+  
+  if (missing.length > 0) {
+    throw new Error(`Missing required Firebase configuration: ${missing.join(', ')}`);
+  }
+  
+  // Basic validation for apiKey format
+  if (config.apiKey && !config.apiKey.match(/^[A-Za-z0-9_-]+$/)) {
+    throw new Error('Invalid Firebase API key format');
+  }
+  
+  // Validate domain format
+  if (config.authDomain && !config.authDomain.match(/^[a-zA-Z0-9.-]+\.firebaseapp\.com$/)) {
+    throw new Error('Invalid Firebase auth domain format');
+  }
+  
+  return config;
+}
+
 function createFirebaseApp(): FirebaseApp {
   if (!getApps().length) {
-    return initializeApp(firebaseConfig);
+    const validatedConfig = validateFirebaseConfig(firebaseConfig);
+    return initializeApp(validatedConfig);
   }
 
   return getApps()[0];
@@ -62,7 +85,7 @@ export const ensureSignedIn = (): Promise<User | null> => {
   }
 
   if (!authReadyPromise) {
-    authReadyPromise = new Promise((resolve, reject) => {
+    authReadyPromise = new Promise<User | null>((resolve, reject) => {
       const unsub = onAuthStateChanged(
         auth,
         async (user) => {

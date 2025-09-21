@@ -1,11 +1,17 @@
 'use client';
 
-import { FormEvent, useEffect, useState } from 'react';
+import { type FormEvent, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useGameStore } from '../src/store/game';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { SkateLogo } from '../components/ui/skate-logo';
+import { 
+  sanitizeDisplayName, 
+  sanitizeJoinCode, 
+  validateDisplayName, 
+  validateJoinCode 
+} from '../src/lib/validation';
 
 export default function HomePage() {
   const router = useRouter();
@@ -16,24 +22,92 @@ export default function HomePage() {
   }));
   const [name, setName] = useState('');
   const [code, setCode] = useState('');
+  const [validationErrors, setValidationErrors] = useState<{
+    name?: string;
+    code?: string;
+  }>({});
 
   useEffect(() => {
-    actions.bootstrap().catch((err) => console.error(err));
+    actions.bootstrap().catch((err) => {
+      // Don't expose internal errors to console in production
+      if (process.env.NODE_ENV === 'development') {
+        console.error(err);
+      }
+    });
   }, [actions]);
+
+  const handleNameChange = (value: string) => {
+    const sanitized = sanitizeDisplayName(value);
+    setName(sanitized);
+    
+    if (validationErrors.name) {
+      const validation = validateDisplayName(sanitized);
+      if (validation.isValid) {
+        setValidationErrors(prev => ({ ...prev, name: undefined }));
+      }
+    }
+  };
+
+  const handleCodeChange = (value: string) => {
+    const sanitized = sanitizeJoinCode(value);
+    setCode(sanitized);
+    
+    if (validationErrors.code) {
+      const validation = validateJoinCode(sanitized);
+      if (validation.isValid) {
+        setValidationErrors(prev => ({ ...prev, code: undefined }));
+      }
+    }
+  };
 
   const handleCreate = async (event: FormEvent) => {
     event.preventDefault();
-    if (!name.trim()) return;
-    const { code: joinCode } = await actions.createGame(name.trim());
-    await actions.connectGame(joinCode);
-    router.push(`/game/${joinCode}`);
+    
+    const trimmedName = name.trim();
+    const nameValidation = validateDisplayName(trimmedName);
+    
+    if (!nameValidation.isValid) {
+      setValidationErrors({ name: nameValidation.error });
+      return;
+    }
+    
+    setValidationErrors({});
+    
+    try {
+      const { code: joinCode } = await actions.createGame(trimmedName);
+      await actions.connectGame(joinCode);
+      router.push(`/game/${joinCode}`);
+    } catch (err) {
+      // Error is handled by the store
+    }
   };
 
   const handleJoin = async (event: FormEvent) => {
     event.preventDefault();
-    if (!name.trim() || !code.trim()) return;
-    await actions.joinGame(code.trim().toUpperCase(), name.trim());
-    router.push(`/game/${code.trim().toUpperCase()}`);
+    
+    const trimmedName = name.trim();
+    const trimmedCode = code.trim();
+    
+    const nameValidation = validateDisplayName(trimmedName);
+    const codeValidation = validateJoinCode(trimmedCode);
+    
+    const errors: typeof validationErrors = {};
+    if (!nameValidation.isValid) errors.name = nameValidation.error;
+    if (!codeValidation.isValid) errors.code = codeValidation.error;
+    
+    if (Object.keys(errors).length > 0) {
+      setValidationErrors(errors);
+      return;
+    }
+    
+    setValidationErrors({});
+    
+    try {
+      await actions.joinGame(trimmedCode.toUpperCase(), trimmedName);
+      router.push(`/game/${trimmedCode.toUpperCase()}`);
+    } catch (err) {
+      // Error is handled by the store
+    }
   };
 
   return (
@@ -59,9 +133,16 @@ export default function HomePage() {
             id="create-name"
             placeholder="Nyjah"
             value={name}
-            onChange={(event) => setName(event.target.value)}
+            onChange={(event) => handleNameChange(event.target.value)}
+            maxLength={32}
             required
+            aria-describedby={validationErrors.name ? 'create-name-error' : undefined}
           />
+          {validationErrors.name && (
+            <p id="create-name-error" className="text-sm text-red-400" role="alert">
+              {validationErrors.name}
+            </p>
+          )}
           <Button type="submit" disabled={loading} className="mt-4 bg-hubba-orange text-black">
             {loading ? 'Creating…' : 'Create Game'}
           </Button>
@@ -79,9 +160,16 @@ export default function HomePage() {
             id="join-name"
             placeholder="Elissa"
             value={name}
-            onChange={(event) => setName(event.target.value)}
+            onChange={(event) => handleNameChange(event.target.value)}
+            maxLength={32}
             required
+            aria-describedby={validationErrors.name ? 'join-name-error' : undefined}
           />
+          {validationErrors.name && (
+            <p id="join-name-error" className="text-sm text-red-400" role="alert">
+              {validationErrors.name}
+            </p>
+          )}
           <label className="text-sm font-medium text-slate-200" htmlFor="join-code">
             Room code
           </label>
@@ -89,10 +177,17 @@ export default function HomePage() {
             id="join-code"
             placeholder="ABCD"
             value={code}
-            onChange={(event) => setCode(event.target.value.toUpperCase())}
+            onChange={(event) => handleCodeChange(event.target.value)}
             className="uppercase"
+            maxLength={8}
             required
+            aria-describedby={validationErrors.code ? 'join-code-error' : undefined}
           />
+          {validationErrors.code && (
+            <p id="join-code-error" className="text-sm text-red-400" role="alert">
+              {validationErrors.code}
+            </p>
+          )}
           <Button type="submit" disabled={loading} className="mt-4 bg-hubba-green text-black">
             {loading ? 'Joining…' : 'Join Game'}
           </Button>

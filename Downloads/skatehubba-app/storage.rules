@@ -1,12 +1,71 @@
 rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
-    match /games/{gameId}/tricks/{fileName} {
-      allow read, write: if request.auth != null;
+    function isSignedIn() {
+      return request.auth != null;
     }
-    match /clips/{fileName} {
+
+    function firestoreGame(gameId) {
+      return get(/databases/(default)/documents/games/$(gameId));
+    }
+
+    function otherSlot(slot) {
+      return slot == 'A' ? 'B' : 'A';
+    }
+
+    function isParticipant(game) {
+      return isSignedIn()
+        && game.exists()
+        && (game.data.players.A.uid == request.auth.uid || game.data.players.B.uid == request.auth.uid);
+    }
+
+    function allowedContentType() {
+      return request.resource != null
+        && request.resource.contentType in ['video/mp4','video/quicktime','video/webm'];
+    }
+
+    function withinSizeLimit() {
+      return request.resource != null && request.resource.size <= 125829120; // 120 MB
+    }
+
+    function currentPathValid(gameId, slot) {
+      return request.resource != null
+        && request.resource.name.matches('games/' + gameId + '/current/' + slot + '/[A-Za-z0-9_./-]{1,255}');
+    }
+
+    function canUploadCurrent(gameId, slot) {
+      let game = firestoreGame(gameId);
+      return request.resource != null
+        && isParticipant(game)
+        && slot in ['A','B']
+        && currentPathValid(gameId, slot)
+        && allowedContentType()
+        && withinSizeLimit()
+        && request.auth.uid == game.data.players[slot].uid
+        && ((game.data.phase == 'SET_RECORD'
+            && slot == game.data.turn
+            && (!('setVideoPath' in game.data.current) || game.data.current.setVideoPath == null))
+          || (game.data.phase == 'RESP_RECORD'
+            && slot == otherSlot(game.data.turn)
+            && ('setVideoPath' in game.data.current)
+            && game.data.current.setVideoPath is string
+            && (!('responseVideoPath' in game.data.current) || game.data.current.responseVideoPath == null)));
+    }
+
+    match /games/{gameId}/current/{slot}/{fileName} {
+      allow read: if firestoreGame(gameId).exists() && isParticipant(firestoreGame(gameId));
+      allow write: if canUploadCurrent(gameId, slot);
+      allow delete: if false;
+    }
+
+    match /games/{gameId}/history/{fileName} {
       allow read: if true;
-      allow write: if request.auth != null;
+      allow write: if false;
+      allow delete: if false;
+    }
+
+    match /{allPaths=**} {
+      allow read, write: if false;
     }
   }
 }

@@ -1,97 +1,236 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-
-    function isAuthed() { return request.auth != null; }
-    function isOwner(uid) { return isAuthed() && request.auth.uid == uid; }
-    function isGamePlayer(game) {
-      return isAuthed() &&
-        (game.data.players.A.uid == request.auth.uid ||
-         game.data.players.B.uid == request.auth.uid);
+    function isSignedIn() {
+      return request.auth != null;
     }
 
-    match /users/{uid} {
-      allow read: if isAuthed();
-      allow create: if isOwner(uid);
-      allow update: if isOwner(uid)
-        && request.resource.data.diff(resource.data).changedKeys().hasOnly([
-          'handle','bio','avatarUrl','stats','updatedAt'
-        ]);
-      allow delete: if false;
+    function otherSlot(slot) {
+      return slot == 'A' ? 'B' : 'A';
     }
 
-    match /leads/{id} {
-      allow create: if request.resource.data.keys().hasOnly(['email','source','createdAt']);
-      allow read, update, delete: if false;
+    function lettersValid(letters) {
+      return letters in ['','S','SK','SK8'];
     }
 
-    match /challenges/{cid} {
-      allow read: if true;
+    function validatePlayer(player) {
+      return player is map
+        && player.keys().hasOnly(['uid','name','letters'])
+        && player.uid is string
+        && player.name is string
+        && lettersValid(player.letters);
+    }
 
-      allow create: if isAuthed()
-        && request.resource.data.challengerUid == request.auth.uid
-        && request.resource.data.keys().hasOnly([
-          'challengerUid','opponentUid','trick','status',
-          'createdAt','updatedAt','expiresAt',
-          'challengerClipId','opponentClipId','winnerUid'
-        ])
-        && request.resource.data.status in ['pending','live']
-        && request.resource.data.createdAt is timestamp
-        && request.resource.data.updatedAt is timestamp
-        && request.resource.data.expiresAt is timestamp
-        && request.resource.data.winnerUid == null;
+    function validatePlayers(players) {
+      return players is map
+        && players.keys().hasOnly(['A','B'])
+        && validatePlayer(players.A)
+        && validatePlayer(players.B);
+    }
 
-      allow update: if isAuthed()
-        && request.resource.data.keys().hasOnly([
-          'status','updatedAt','challengerClipId','opponentClipId','winnerUid','opponentUid'
-        ])
-        && request.resource.data.updatedAt > resource.data.updatedAt
+    function validateCurrent(current) {
+      return current is map
+        && current.keys().hasOnly(['by','setVideoPath','responseVideoPath'])
+        && current.by in ['A','B']
+        && (!('setVideoPath' in current) || current.setVideoPath == null || current.setVideoPath is string)
+        && (!('responseVideoPath' in current) || current.responseVideoPath == null || current.responseVideoPath is string);
+    }
+
+    function validateHistoryItem(item) {
+      return item is map
+        && item.keys().hasOnly(['by','setPath','respPath','result','ts'])
+        && item.by in ['A','B']
+        && (!('setPath' in item) || item.setPath is string)
+        && (!('respPath' in item) || item.respPath is string)
+        && item.result in ['declined_set','approved_set','landed','failed']
+        && item.ts is timestamp;
+    }
+
+    function validateHistory(history) {
+      return history is list
+        && history.all(h, validateHistoryItem(h));
+    }
+
+    function validateTurn(turn) {
+      return turn in ['A','B'];
+    }
+
+    function validatePhase(phase) {
+      return phase in ['SET_RECORD','SET_JUDGE','RESP_RECORD','RESP_JUDGE'];
+    }
+
+    function validateWinner(winner) {
+      return winner == null || winner in ['A','B'];
+    }
+
+    function gameDoc(gameId) {
+      return get(/databases/$(database)/documents/games/$(gameId));
+    }
+
+    function validClipPath(gameId, slot, path) {
+      return path is string
+        && path.matches('^games/' + gameId + '/current/' + slot + '/[A-Za-z0-9_./-]{1,255}$');
+    }
+
+    function getSetPath(current) {
+      return ('setVideoPath' in current) ? current.setVideoPath : null;
+    }
+
+    function getRespPath(current) {
+      return ('responseVideoPath' in current) ? current.responseVideoPath : null;
+    }
+
+    function isParticipantData(data) {
+      return isSignedIn()
+        && data is map
+        && ('players' in data)
+        && data.players is map
+        && ((data.players.A.uid == request.auth.uid) || (data.players.B.uid == request.auth.uid));
+    }
+
+    function validateGame(data) {
+      return data is map
+        && data.keys().hasOnly(['code','turn','phase','winner','players','current','history','createdAt','updatedAt'])
+        && data.code is string
+        && validateTurn(data.turn)
+        && validatePhase(data.phase)
+        && validateWinner(data.winner)
+        && validatePlayers(data.players)
+        && validateCurrent(data.current)
+        && validateHistory(data.history)
+        && (!('createdAt' in data) || data.createdAt is timestamp)
+        && (!('updatedAt' in data) || data.updatedAt is timestamp);
+    }
+
+    function canSubmitSetClip(gameId, oldGame, newGame) {
+      let oldSet = getSetPath(oldGame.current);
+      let newSet = getSetPath(newGame.current);
+      return oldGame.phase == 'SET_RECORD'
+        && oldSet == null
+        && newSet is string
+        && validClipPath(gameId, oldGame.turn, newSet)
+        && request.auth.uid == oldGame.players[oldGame.turn].uid;
+    }
+
+    function canSubmitRespClip(gameId, oldGame, newGame) {
+      let oldResp = getRespPath(oldGame.current);
+      let newResp = getRespPath(newGame.current);
+      let responderSlot = otherSlot(oldGame.turn);
+      return oldGame.phase == 'RESP_RECORD'
+        && getSetPath(oldGame.current) is string
+        && oldResp == null
+        && newResp is string
+        && validClipPath(gameId, responderSlot, newResp)
+        && request.auth.uid == oldGame.players[responderSlot].uid;
+    }
+
+    function validateCurrentMutation(gameId, oldGame, newGame) {
+      let oldSet = getSetPath(oldGame.current);
+      let newSet = getSetPath(newGame.current);
+      let oldResp = getRespPath(oldGame.current);
+      let newResp = getRespPath(newGame.current);
+      let setChanged = oldSet != newSet;
+      let respChanged = oldResp != newResp;
+
+      return (!setChanged || (setChanged && !respChanged && canSubmitSetClip(gameId, oldGame, newGame)))
+        && (!respChanged || (respChanged && !setChanged && canSubmitRespClip(gameId, oldGame, newGame)));
+    }
+
+    function validateGameMutation(gameId) {
+      let oldGame = resource.data;
+      let newGame = request.resource.data;
+
+      return newGame.code == oldGame.code
+        && newGame.players.A.uid == oldGame.players.A.uid
+        && newGame.players.B.uid == oldGame.players.B.uid
+        && newGame.players.A.name == oldGame.players.A.name
+        && newGame.players.B.name == oldGame.players.B.name
+        && newGame.players.A.letters == oldGame.players.A.letters
+        && newGame.players.B.letters == oldGame.players.B.letters
+        && newGame.turn == oldGame.turn
+        && newGame.phase == oldGame.phase
+        && newGame.winner == oldGame.winner
+        && newGame.history == oldGame.history
+        && newGame.current.by == oldGame.current.by
+        && validateCurrentMutation(gameId, oldGame, newGame);
+    }
+
+    function intentKeys(type) {
+      return type == 'submit_set_clip' ? ['type','createdAt','phase','by','storagePath']
+        : type == 'submit_resp_clip' ? ['type','createdAt','phase','by','storagePath']
+        : type == 'judge_set' ? ['type','createdAt','phase','by','approve']
+        : type == 'judge_resp' ? ['type','createdAt','phase','by','landed']
+        : type == 'self_fail_set' ? ['type','createdAt','phase','by']
+        : type == 'self_fail_resp' ? ['type','createdAt','phase','by']
+        : [];
+    }
+
+    function isValidIntent(gameId, game, intentId, data) {
+      let allowedTypes = ['submit_set_clip','submit_resp_clip','judge_set','judge_resp','self_fail_set','self_fail_resp'];
+      return data is map
+        && data.type in allowedTypes
+        && data.keys().hasOnly(intentKeys(data.type))
+        && data.createdAt is timestamp
+        && data.phase == game.data.phase
+        && data.by in ['A','B']
+        && request.auth.uid == game.data.players[data.by].uid
+        && intentId == request.auth.uid + '_' + data.phase + '_' + data.type
         && (
-          (request.resource.data.challengerClipId == resource.data.challengerClipId
-            || request.auth.uid == resource.data.challengerUid)
-          &&
-          (request.resource.data.opponentClipId == resource.data.opponentClipId
-            || request.auth.uid == resource.data.opponentUid)
-        )
-        && (
-          (resource.data.winnerUid == null && request.resource.data.winnerUid in
-            [resource.data.challengerUid, resource.data.opponentUid])
-          || (request.resource.data.winnerUid == resource.data.winnerUid)
-        )
-        && (
-          (request.resource.data.opponentUid == resource.data.opponentUid) ||
-          (resource.data.opponentUid == null && request.resource.data.opponentUid == request.auth.uid)
+          (data.type == 'submit_set_clip'
+            && game.data.phase == 'SET_RECORD'
+            && data.by == game.data.turn
+            && getSetPath(game.data.current) == null
+            && data.storagePath is string
+            && validClipPath(gameId, data.by, data.storagePath))
+          || (data.type == 'submit_resp_clip'
+            && game.data.phase == 'RESP_RECORD'
+            && data.by == otherSlot(game.data.turn)
+            && getSetPath(game.data.current) is string
+            && getRespPath(game.data.current) == null
+            && data.storagePath is string
+            && validClipPath(gameId, data.by, data.storagePath))
+          || (data.type == 'judge_set'
+            && game.data.phase == 'SET_JUDGE'
+            && data.by == otherSlot(game.data.turn)
+            && data.approve is bool)
+          || (data.type == 'judge_resp'
+            && game.data.phase == 'RESP_JUDGE'
+            && data.by == game.data.turn
+            && data.landed is bool)
+          || (data.type == 'self_fail_set'
+            && game.data.phase == 'SET_RECORD'
+            && data.by == game.data.turn)
+          || (data.type == 'self_fail_resp'
+            && game.data.phase == 'RESP_RECORD'
+            && data.by == otherSlot(game.data.turn))
         );
-
-      allow delete: if false;
-    }
-
-    match /clips/{clipId} {
-      allow read: if true;
-      allow create: if isOwner(request.resource.data.ownerUid)
-        && request.resource.data.keys().hasOnly([
-          'ownerUid','challengeId','storagePath','durationMs','thumbUrl','createdAt'
-        ])
-        && request.resource.data.createdAt is timestamp;
-      allow update, delete: if false;
-    }
-
-    match /logs/{id} {
-      allow create: if isAuthed();
-      allow read, update, delete: if false;
     }
 
     match /games/{gameId} {
-      allow create: if isAuthed();
-      allow read: if isGamePlayer(resource);
-      allow update: if isGamePlayer(resource)
-        && request.resource.data.diff(resource.data).changedKeys()
-           .hasOnly(['turn','letters','winner','players','status']);
+      allow read: if resource != null && isParticipantData(resource.data);
+
+      allow create: if isSignedIn()
+        && validateGame(request.resource.data)
+        && isParticipantData(request.resource.data);
+
+      allow update: if isSignedIn()
+        && resource != null
+        && validateGame(request.resource.data)
+        && isParticipantData(resource.data)
+        && isParticipantData(request.resource.data)
+        && validateGameMutation(gameId);
+
       allow delete: if false;
-      match /tricks/{trickId} {
-        allow create, read: if isGamePlayer(
-          get(/databases/$(database)/documents/games/$(gameId))
-        );
+
+      match /intents/{intentId} {
+        allow read: if gameDoc(gameId).exists()
+          && isParticipantData(gameDoc(gameId).data);
+
+        allow create: if isSignedIn()
+          && gameDoc(gameId).exists()
+          && isParticipantData(gameDoc(gameId).data)
+          && isValidIntent(gameId, gameDoc(gameId), intentId, request.resource.data);
+
         allow update, delete: if false;
       }
     }

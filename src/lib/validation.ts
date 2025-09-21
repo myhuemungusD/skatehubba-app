@@ -37,7 +37,7 @@ export function validateDisplayName(name: string): { isValid: boolean; error?: s
     return { isValid: true };
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return { isValid: false, error: error.errors[0]?.message || 'Invalid display name' };
+      return { isValid: false, error: error.issues[0]?.message || 'Invalid display name' };
     }
     return { isValid: false, error: 'Invalid display name' };
   }
@@ -49,7 +49,7 @@ export function validateJoinCode(code: string): { isValid: boolean; error?: stri
     return { isValid: true };
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return { isValid: false, error: error.errors[0]?.message || 'Invalid join code' };
+      return { isValid: false, error: error.issues[0]?.message || 'Invalid join code' };
     }
     return { isValid: false, error: 'Invalid join code' };
   }

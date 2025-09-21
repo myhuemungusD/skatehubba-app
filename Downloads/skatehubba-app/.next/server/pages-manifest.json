@@ -1,9 +1,0 @@
-{
-  "/_app": "pages/_app.js",
-  "/_error": "pages/_error.js",
-  "/_document": "pages/_document.js",
-  "/challenges/[id]": "pages/challenges/[id].js",
-  "/challenges/mine": "pages/challenges/mine.js",
-  "/challenges": "pages/challenges.js",
-  "/": "pages/index.js"
-}

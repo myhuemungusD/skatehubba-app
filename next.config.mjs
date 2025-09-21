@@ -3,9 +3,6 @@ import withPWA from 'next-pwa';
 const isProd = process.env.NODE_ENV === 'production';
 
 const nextConfig = {
-  experimental: {
-    appDir: true
-  },
   images: {
     domains: ['firebasestorage.googleapis.com']
   },

@@ -14,6 +14,7 @@ interface Props {
 
 export default function VideoUploader({ gameId, uid, playerKey }: Props) {
   const [progress, setProgress] = useState(0);
+  const [error, setError] = useState<string | null>(null);
 
   const handleUpload = async (file: File) => {
     UploadMetaSchema.parse({ sizeBytes: file.size, mimeType: file.type });
@@ -27,20 +28,37 @@ export default function VideoUploader({ gameId, uid, playerKey }: Props) {
     const storageRef = ref(storage, path);
     const task = uploadBytesResumable(storageRef, file);
 
-    task.on("state_changed", (snap) => {
-      setProgress((snap.bytesTransferred / snap.totalBytes) * 100);
-    });
+    setError(null);
+    setProgress(0);
 
-    task.on("error", (err) => console.error(err));
-
-    task.on("complete", async () => {
-      const url = await getDownloadURL(storageRef);
-      await updateDoc(doc(db, "games", gameId), {
-        [`players.${playerKey}.lastClipPath`]: path,
-        updatedAt: serverTimestamp(),
-      });
-      console.log("Uploaded", url);
-    });
+    task.on(
+      "state_changed",
+      (snap) => {
+        setProgress((snap.bytesTransferred / snap.totalBytes) * 100);
+      },
+      (err) => {
+        console.error(err);
+        setError(err.message || "Upload failed. Please try again.");
+      },
+      async () => {
+        try {
+          const url = await getDownloadURL(storageRef);
+          await updateDoc(doc(db, "games", gameId), {
+            [`players.${playerKey}.lastClipPath`]: path,
+            updatedAt: serverTimestamp(),
+          });
+          setProgress(100);
+          console.log("Uploaded", url);
+        } catch (updateError) {
+          console.error(updateError);
+          const message =
+            updateError instanceof Error
+              ? updateError.message
+              : "Could not finalize upload. Please try again.";
+          setError(message);
+        }
+      },
+    );
   };
 
   return (
@@ -54,6 +72,7 @@ export default function VideoUploader({ gameId, uid, playerKey }: Props) {
         }}
       />
       {progress > 0 && <p>Upload: {progress.toFixed(0)}%</p>}
+      {error && <p className="text-red-500">{error}</p>}
     </div>
   );
 }
